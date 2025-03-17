@@ -10,7 +10,7 @@ cloudinary.config({
 
 const uploadOnCloudinary = async (localFilePath) => {
     try {
-      if (!localFilePath || typeof localFilePath !== "string") {
+      if (!localFilePath) {
         console.error("Invalid file path provided.");
         return null;
       }
