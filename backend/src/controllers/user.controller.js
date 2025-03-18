@@ -3,6 +3,9 @@ import { ApiError } from "../utils/ApiError.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
 import User from "../models/user.model.js";
 import { uploadOnCloudinary } from "../utils/cloudinary.js";
+import jwt from "jsonwebtoken";
+import extractPublicId from "../utils/extractPublicId.js";
+import { deleteFromCloudinary } from "../utils/deletFromCloudinary.js";
 
 const generateAccessAndRefreshToken = async (userId) => {
     try {
@@ -10,7 +13,7 @@ const generateAccessAndRefreshToken = async (userId) => {
         if (!user) {
             throw new ApiError(404, "User not found");
         }
-        const accessToken = await user.generateAccessToken();  // Fixed typo
+        const accessToken = await user.generateAccesToken();  // Fixed typo
         const refreshToken = await user.generateRefreshToken();
 
         user.refreshToken = refreshToken;
@@ -40,22 +43,19 @@ const signUp = asyncHandler(async (req, res) => {
         throw new ApiError(409, "User with this email already exists");
     }
 
-    // Handle Profile Picture Upload
-    let profilePicUrl = "";
-    if (req.files?.profilePic?.[0]?.path) {
-        const profilePic = await uploadOnCloudinary(req.files.profilePic[0].path);
-        if (!profilePic) {
-            throw new ApiError(500, "Error uploading profile picture");
-        }
-        profilePicUrl = profilePic.url;
+    const profilePicPath = req.file?.path;
+    const profilePic = await uploadOnCloudinary(profilePicPath)
+    if(!profilePic.url) {
+        throw new ApiError(500, "Something went wrong while uploading profile picture");
     }
+
 
     // Create new user
     const user = await User.create({
         fullName,
         email,
         password,
-        profilePic: profilePicUrl
+        profilePic: profilePic.url || "",
     });
 
     const createdUser = await User.findById(user._id).select("-password -refreshToken");
@@ -67,4 +67,120 @@ const signUp = asyncHandler(async (req, res) => {
     return res.status(201).json(new ApiResponse(201, createdUser, "User registered successfully"));
 });
 
-export { signUp };
+const login = asyncHandler(async (req, res) => {
+    const {email, password} = req.body;
+    if(!email || !password) {
+        throw new ApiError(400, "Email and password are required");
+    }
+
+    const user = await User.findOne({email});
+
+    if(!user) {
+        throw new ApiError(404, "User not found");
+    }
+
+    const isPasswordValid = user.isPasswordCorrect(password);
+    if(!isPasswordValid) {
+        throw new ApiError(400, "Invalid password");
+    }
+
+    const { accessToken, refreshToken } = await generateAccessAndRefreshToken(user._id);
+    const loggedInUser = await User.findById(user._id).select("-password -refreshToken");
+
+    const options = {
+        httpOnly : true,
+        secure : true
+    }
+
+    return res
+    .status(200)
+    .cookie("refreshToken", refreshToken, options)
+    .cookie("accessToken", accessToken, options)
+    .json(new ApiResponse(200, loggedInUser, "User logged in successfully"));
+})
+
+const logout = asyncHandler(async (req, res) => {
+    try {
+        // Ensure req.user is populated
+        if (!req.user || !req.user._id) {
+            throw new ApiError(400, "User information is missing.");
+        }
+
+        // Remove refresh token from database
+        await User.findByIdAndUpdate(
+            req.user._id,
+            {
+                $set: { refreshToken: undefined } // Clear all refresh tokens for simplicity
+            },
+            { new: true }
+        );
+
+        // Cookie options
+        const options = {
+            httpOnly: true,
+            secure : true
+        };
+
+        // Clear cookies and respond
+        return res
+            .status(200)
+            .clearCookie("accessToken", options)
+            .clearCookie("refreshToken", options)
+            .json(
+                new ApiResponse(200, {}, "User logged out successfully.")
+            );
+    } catch (error) {
+        throw new ApiError(500, "Failed to log out user.");
+    }
+})
+
+const updateUserProfilePic = asyncHandler(async (req, res) => {
+    const profilePicPath = req.file?.path;
+
+    if(!profilePicPath) {
+        throw new ApiError(400, "Profile picture is required");
+    }
+
+    const profilePic = await uploadOnCloudinary(profilePicPath);
+    if(!profilePic.url) {
+        throw new ApiError(500, "Something went wrong while uploading profile picture");
+    }
+
+    const user = await User.findById(req.user._id).select("-password -refreshToken");
+    if(!user) {
+        throw new ApiError(404, "User not found");
+    }
+
+    if(user?.profilePic) {
+        const cloudId = extractPublicId(user.profilePic);
+        await deleteFromCloudinary(cloudId);
+    }
+
+    user.profilePic = profilePic.url;
+    await user.save({ validateBeforeSave: false });
+
+    // const resUser = user.select("-password -refreshToken");
+
+
+    return res
+    .status(200)
+    .json(new ApiResponse(200, user, "Profile picture updated successfully"));
+})
+
+
+const getCurrentUser = asyncHandler(async(req, res) => {
+    return res
+    .status(200)
+    .json(
+       new ApiResponse(200, req.user, "User fetched succesfully")
+    )
+})
+
+export {
+     signUp,
+     login,
+     logout,
+     updateUserProfilePic,
+     getCurrentUser,
+
+};
