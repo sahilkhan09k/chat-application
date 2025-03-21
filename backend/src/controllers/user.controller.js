@@ -45,18 +45,27 @@ const signUp = asyncHandler(async (req, res) => {
 
     const profilePicPath = req.file?.path;
     const profilePic = await uploadOnCloudinary(profilePicPath)
-    if(!profilePic.url) {
+    if(profilePic && !profilePic?.url) {
         throw new ApiError(500, "Something went wrong while uploading profile picture");
     }
-
 
     // Create new user
     const user = await User.create({
         fullName,
         email,
         password,
-        profilePic: profilePic.url || "",
+        profilePic: profilePic?.url || "",
     });
+
+    const { accessToken, refreshToken } = await generateAccessAndRefreshToken(user._id);
+    const options = {
+        httpOnly : true,
+        secure : true
+    }
+
+     user.refreshToken = refreshToken;
+     await user.save({ validateBeforeSave: false });
+
 
     const createdUser = await User.findById(user._id).select("-password -refreshToken");
     if (!createdUser) {
@@ -64,7 +73,11 @@ const signUp = asyncHandler(async (req, res) => {
     }
 
     // Return response
-    return res.status(201).json(new ApiResponse(201, createdUser, "User registered successfully"));
+    return res
+    .status(201)
+    .cookie("refreshToken", refreshToken, options)
+    .cookie("accessToken", accessToken, options)
+    .json(new ApiResponse(201, createdUser, "User registered successfully"));
 });
 
 const login = asyncHandler(async (req, res) => {

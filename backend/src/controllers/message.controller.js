@@ -52,7 +52,7 @@ const sendMessage = asyncHandler(async (req, res) => {
 
     const imageId = req.file?.path;
     const cloudImage = await uploadOnCloudinary(imageId);
-    if(!cloudImage.url) {
+    if(!cloudImage?.url) {
         throw new ApiError(500, "Something went wrong while uploading image");
     }
 
@@ -60,7 +60,7 @@ const sendMessage = asyncHandler(async (req, res) => {
         senderId: userId,
         receiverId: recieverId,
         text,
-        image: cloudImage.url || ""
+        image: cloudImage?.url || ""
     })
 
     return res
