@@ -3,6 +3,10 @@ import User from "../models/user.model.js";
 import Message from "../models/message.model.js";
 import { ApiError } from "../utils/ApiError.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
+import { uploadOnCloudinary } from "../utils/cloudinary.js";
+import { getRecieverSocketId } from "../index.js";
+import { isObjectIdOrHexString } from "mongoose";
+import { io } from "../index.js";
 
 const getUserForSideBar = asyncHandler(async (req, res) => {
     const user = req.user?._id;
@@ -52,16 +56,23 @@ const sendMessage = asyncHandler(async (req, res) => {
 
     const imageId = req.file?.path;
     const cloudImage = await uploadOnCloudinary(imageId);
-    if(!cloudImage?.url) {
+    if(cloudImage && !cloudImage?.url) {
         throw new ApiError(500, "Something went wrong while uploading image");
     }
 
-    const message = Message.create({
+    const message = await Message.create({
         senderId: userId,
         receiverId: recieverId,
         text,
         image: cloudImage?.url || ""
     })
+
+    const recieverSocketId = getRecieverSocketId(recieverId);
+
+    if(recieverSocketId) {
+        io.to(recieverSocketId).emit("newMessage", message)
+    }
+
 
     return res
     .status(201)
