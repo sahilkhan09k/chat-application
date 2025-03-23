@@ -4,6 +4,8 @@ import connectDB from "./db/index.js";
 import { app } from "./app.js";
 import {Server} from "socket.io"
 import http from "http"
+import path from "path";
+import express from "express"
 
 dotenv.config({
     path : './env'
@@ -15,6 +17,9 @@ const io = new Server(server, {
         origin : process.env.CORS_ORIGIN,
     }
 });
+
+const __dirname = path.resolve();
+
 
 export {io}
 
@@ -40,6 +45,14 @@ io.on("connection", (socket) => {
 export function getRecieverSocketId(userId) {
     return userSocketMap[userId];
 }
+
+if (process.env.NODE_ENV === "production") {
+    app.use(express.static(path.join(__dirname, "../frontend/dist")));
+  
+    app.get("*", (req, res) => {
+      res.sendFile(path.join(__dirname, "../frontend", "dist", "index.html"));
+    });
+  }
 
 connectDB()
 .then(() => {
