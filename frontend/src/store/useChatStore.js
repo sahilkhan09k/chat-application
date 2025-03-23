@@ -15,7 +15,8 @@ export const useChatStore = create((set, get) => ({
         set({isUsersLoading : true});
         try {
             const res = await axiosInstance.get("/message/get-users");
-            set({users : res.data?.message})
+            console.log("results of final op are", res)
+            set({users : res.data?.message?.sortedUsers})
         } catch (error) {
             const errorMessage = error.response?.data?.message || "someting went wrong";
             toast.error(errorMessage);
@@ -44,19 +45,19 @@ export const useChatStore = create((set, get) => ({
     },
 
     sendMessage : async (messageData) => {
-         const {selectedUser, messages} = get();
+        const {selectedUser, messages} = get();
 
-         try {
-            const res = await axiosInstance.post(`/message/send-message/${selectedUser?._id}`, messageData);
-            console.log("message data", messageData);
-            console.log("Message results", res.data);
-            set({messages : [...messages, res.data.message]})
-         } catch (error) {
-            const errorMessage = error.response?.data?.message || "someting went wrong";
-            toast.error(errorMessage);
-         }
-    },
-
+        try {
+           const res = await axiosInstance.post(`/message/send-message/${selectedUser?._id}`, messageData);
+        //    console.log("message data", messageData);
+        //    console.log("Message results", res.data);
+           set({messages : [...messages, res.data.message]})
+        } catch (error) {
+           const errorMessage = error.response?.data?.message || "someting went wrong";
+           toast.error(errorMessage);
+        }
+   },
+  
     subscribeToMessage : () => {
       const {selectedUser} = get();
       if(!selectedUser) return;
